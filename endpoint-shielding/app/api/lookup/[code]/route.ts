@@ -1,15 +1,24 @@
-import { NextResponse } from "next/server";
-import { SAMPLE_RECORDS } from "@/data/records";
-import { toPublicLookupResponse } from "@/lib/masking";
+import { NextRequest, NextResponse } from "next/server";
+import { SAMPLE_RECORDS } from "../../../../src/data/records";
+import { toPublicLookupResponse } from "../../../../src/lib/masking";
 
 export async function GET(
-  _request: Request,
+  _req: NextRequest,
   context: { params: Promise<{ code: string }> }
 ) {
   const { code } = await context.params;
-  const normalizedCode = code.trim().toUpperCase();
+  const normalizedCode = decodeURIComponent(code).trim().toUpperCase();
 
-  const record = SAMPLE_RECORDS.find((item) => item.code === normalizedCode);
+  if (!normalizedCode) {
+    return NextResponse.json(
+      { error: "Lookup code is required" },
+      { status: 400 }
+    );
+  }
+
+  const record = SAMPLE_RECORDS.find(
+    (item) => item.code.toUpperCase() === normalizedCode
+  );
 
   if (!record) {
     return NextResponse.json(
