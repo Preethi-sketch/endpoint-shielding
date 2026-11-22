@@ -1,0 +1,70 @@
+name: Security & DAST Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  static-and-secret-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript check and ESLint
+        run: |
+          npx tsc --noEmit
+          npm run lint
+
+      - name: Scan repository for secrets (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+
+  dast-zap-scan:
+    needs: static-and-secret-checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install and build app
+        run: |
+          npm ci
+          npm run build
+
+      - name: Start server and wait until ready
+        run: |
+          npx next start -p 3000 > /tmp/next.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3000/api/lookup/CERT-101 > /dev/null; then
+              echo "Next.js server is up!"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start in time"
+          cat /tmp/next.log
+          exit 1
+
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "http://127.0.0.1:3000/api/lookup/CERT-101"
